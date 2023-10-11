@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+
+Resources:
+  ConnectionHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: connection.lambdaHandler
+      Runtime: nodejs18.x
+      CodeUri: websockets/
+
+  DisconnectionHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: disconnection.lambdaHandler
+      Runtime: nodejs18.x
+      CodeUri: websockets/
+
+  MessageHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: message.lambdaHandler
+      Runtime: nodejs18.x
+      CodeUri: websockets/
+
+  WebSocketConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WebSocketConnections
+      AttributeDefinitions:
+        - AttributeName: connectionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: connectionId
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  WebSocketMessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WebSocketMessages
+      AttributeDefinitions:
+        - AttributeName: connectionId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: connectionId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: MyWebSocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      OperationName: ConnectRoute
+      Target: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${ConnectionHandlerFunction}
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${DisconnectionHandlerFunction}
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      OperationName: DefaultRoute
+      Target: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${MessageHandlerFunction}
